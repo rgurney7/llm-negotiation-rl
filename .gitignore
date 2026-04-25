@@ -1,0 +1,31 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Secrets
+.env
+
+# Virtual environments
+.venv
+
+# Model checkpoints
+checkpoints*/
+*.safetensors
+*.pt
+
+# Training/eval artifacts
+training_*.csv
+training_*.log
+eval_*.csv
+eval_*.log
+transcripts.csv
+*.ipynb
+
+# Caches
+_*.json
+.runpod_state
+.DS_Store
