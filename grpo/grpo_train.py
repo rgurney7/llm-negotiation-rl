@@ -180,8 +180,13 @@ def main():
                     adv = (rewards[g] - mean_r) / (std_r + 1e-8)
 
                     new_lps, ent = agent.evaluate(group["ctx"][g], group["gen"][g])
+                    # NOTE: sequence-level ratio (summed log-probs). The DeepSeek GRPO objective
+                    # uses a token-level mean of min(ratio_t*adv, clip*adv); the sequence-level
+                    # form is higher variance and length-biased. See analysis.md.
                     ratio = torch.exp(new_lps.sum() - group["old_lps"][g])
                     ploss = -torch.min(ratio * adv, torch.clamp(ratio, 1 - CLIP_EPS, 1 + CLIP_EPS) * adv)
+                    # NOTE: k3 KL estimator with the ratio inverted (pi_theta/pi_ref); the standard
+                    # form uses pi_ref/pi_theta. Still a valid pull toward the reference. See analysis.md.
                     tr = torch.exp(new_lps - group["ref_lps"][g])
                     kl = (tr - torch.log(tr) - 1).sum()
                     ((ploss + KL_COEF * kl - ent.mean() * ENTROPY_COEF) / n_samples).backward()

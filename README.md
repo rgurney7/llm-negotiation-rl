@@ -107,6 +107,8 @@ data/
 
 - **CraigslistBargains** (He et al. 2018): 460 real negotiation transcripts filtered through a two-pass quality pipeline.
 - **Synthetic scenarios**: 200 scenarios generated via Gemini across 40 item types and 10 buyer personas, spanning 5 price tiers ($50–$500K).
+- **Held-out validation** (`craigslist_eval.csv`): 153 uuids with zero overlap with the 526 training uuids, enforced by `python data/check_splits.py`.
+- **`craigslist_gold.csv`**: the gold-standard quality-reference set (top-tier transcripts with full rubric scores) used during data curation to calibrate the two-pass quality filter. Not a training or evaluation input; held-out eval uses `craigslist_eval.csv`.
 
 ## Limitations
 
@@ -118,7 +120,7 @@ data/
 - Price extraction by the LLM judge was spot-checked during development rather than formally validated against ground-truth labels or across multiple judges.
 
 ### Reproducibility
-Training ran on ephemeral GPU compute. LoRA and critic checkpoints and per-update training logs were not persisted; the numbers in the results table reflect run-time observation during the original experiments and are not independently re-verifiable from this repository. The code here is the training and evaluation pipeline, and reproducing the reported numbers would require re-running the full sweep. The evaluation scripts as committed diverged from the pipeline used during development (the default data path in `ppo_eval.py`, and the env constructor signature in `grpo_eval.py`), and should be read as the intended design rather than a direct replay.
+Training ran on ephemeral GPU compute. LoRA and critic checkpoints and per-update training logs were not persisted; the numbers in the results table reflect run-time observation during the original experiments and are not independently re-verifiable from this repository. The code here is the training and evaluation pipeline, and reproducing the reported numbers would require re-running the full sweep. The evaluation scripts as committed diverged from the pipeline used during development (the default data path in `ppo_eval.py`, and the env constructor signature in `grpo_eval.py`), and should be read as the intended design rather than a direct replay. See the Implementation Notes in [analysis.md](analysis.md) for the held-out eval path and two other known issues in the PPO and GRPO code.
 
 ## References
 

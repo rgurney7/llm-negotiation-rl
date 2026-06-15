@@ -103,3 +103,13 @@ Total spend: ~$250 across RunPod GPU rentals and API calls, covering six PPO run
 ## A Note on Reproducibility
 
 Training was done on ephemeral GPU compute. Model checkpoints and per-update training logs were not persisted. The quantitative results above are from run-time observation during the original experiments; the code in this repository is the training and evaluation pipeline, but reproducing the numbers would require re-running the full sweep.
+
+## Implementation Notes and Known Issues
+
+Three things in the committed code are worth calling out, both for anyone reading it and as a record of what I would change. The original runs used the versions described here; since the checkpoints were not persisted, these are documented rather than silently rewritten.
+
+**PPO value head is conditioned on the post-action hidden state.** In `ppo_agent.py`, the critic reads the hidden state at the final *generated* token, so the value estimate is closer to Q(s, a) than the state value V(s). A correct state-value baseline should read the last *context*-token hidden state, before generation. Because the baseline then depends on the action taken, the advantage estimate is biased — the GAE residual `r + γV(s') − V(s)` mixes a Q-like term into a recursion that assumes state values. Training still improved (the gradient stayed directionally useful), but a clean reimplementation would move the value read to the pre-action position.
+
+**The GRPO objective is sequence-level, and the KL ratio is inverted.** The policy ratio in `grpo_train.py` is taken from the summed sequence log-prob (`exp(Σnew − Σold)`) rather than the token-level mean of `min(ratio_t·Â, clip(ratio_t)·Â)` in the DeepSeek formulation; the sequence-level form is higher variance and carries a length bias. The KL penalty uses `tr = π_θ/π_ref` inside `tr − log(tr) − 1`, the inverse of the `π_ref/π_θ` ratio the k3 estimator specifies. It still behaves as a valid pull toward the reference policy (non-negative, minimized at parity), but it is not the exact KL direction intended.
+
+**The committed eval scripts target the wrong split.** `ppo_eval.py` defaults its data path to the enriched *training* file, and `grpo_eval.py` runs over the synthetic scenarios in `shared/config.py` rather than a held-out CSV. A true held-out evaluation should point at `data/craigslist_eval.csv` (153 validation uuids, zero training overlap, verified by `data/check_splits.py`). The results table reflects the development-time pipeline; the committed scripts should be read as intended design.

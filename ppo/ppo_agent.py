@@ -72,6 +72,9 @@ class NegotiationAgent(nn.Module):
         dist = Categorical(logits=logits.float())
         log_probs = dist.log_prob(generated_ids)
         entropy = dist.entropy()
+        # NOTE: reads the post-action hidden state, so this is closer to Q(s, a) than V(s).
+        # A correct state-value baseline would read the last context-token hidden state,
+        # before generation. See "Implementation Notes and Known Issues" in analysis.md.
         value = self.critic(hidden[0, -1, :]).squeeze()
 
         return log_probs[0], entropy[0], value
