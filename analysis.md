@@ -28,7 +28,7 @@ The GRPO implementation is a single-turn algorithm adapted for negotiation. For 
 
 PPO runs in a multi-turn setup, with a 23M-parameter standalone critic evaluating each turn and sparse terminal reward propagated backward via GAE. I ran six training runs across two model families, producing over 3,600 negotiations in total. The SFT baseline is trained for three epochs on curated positive-reward trajectories from the synthetic dataset.
 
-All three methods use Qwen3.5-4B with LoRA (r=8, α=16) as the base; earlier runs used Llama-3.2-3B. The core training data is 460 real Craigslist transcripts filtered through a two-pass quality pipeline. GRPO additionally draws on 200 synthetic scenarios seeded off-loop by a stronger set of models (`gpt-5.4`, `gpt-5.4-mini`, `gemini-3.1-pro-preview`, and `gemini-3-flash-preview`), none of which run during training.
+All three methods use Qwen3.5-4B with LoRA (r=8, α=16) as the base; earlier runs used Llama-3.2-3B. The core training data is 526 real Craigslist transcripts filtered through a two-pass quality pipeline, 460 of which reached a deal. GRPO additionally draws on 200 synthetic scenarios seeded off-loop by a stronger set of models (`gpt-5.4`, `gpt-5.4-mini`, `gemini-3.1-pro-preview`, and `gemini-3-flash-preview`), none of which run during training.
 
 On the other side of each negotiation sits a frozen API buyer, sampled per episode from a weighted roster of `gemini-3.1-flash-lite-preview`, `gemini-2.5-flash`, and Groq's `openai/gpt-oss-120b`, so the agent doesn't overfit to a single opponent. A wrapper retries against another model in the roster on failure, which keeps a flaky API from crashing a run. The judge is a single `gemini-3.1-flash-lite-preview` call that reads the finished transcript and extracts the agreed price and the turn at which the price was agreed.
 
@@ -98,7 +98,7 @@ The most practically useful finding is that end-to-end RL on natural language ne
 
 I went in believing RL would discover negotiation strategies beyond what SFT could teach. At 4B scale with 500 training scenarios and $250 of compute, it didn't. But PPO's credit assignment machinery works. It propagated a sparse terminal reward through 8 turns and produced measurable strategic behavior without the degeneration or format collapse prior work reported. The bottleneck isn't the algorithm; it's dataset size for generalization and model capacity for separating fluency from strategy. Whether SFT followed by PPO at larger scale can break through SFT's ceiling is the open question, but proving that is a different project at a different budget. Long-horizon tasks with grounded rewards and genuine reasoning demands are exactly the regime RL is built for, and I'm more confident in that bet after this project, not less.
 
-Total spend: ~$250 across RunPod GPU rentals and API calls, covering six PPO runs, four GRPO run series, one SFT baseline, and a five-agent evaluation sweep on held-out Craigslist data.
+Total spend: ~$250 across RunPod GPU rentals and API calls, covering six PPO runs, four GRPO run series, one SFT baseline, and a five-agent evaluation sweep on Craigslist negotiations.
 
 ## A Note on Reproducibility
 

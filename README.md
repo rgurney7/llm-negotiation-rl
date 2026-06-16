@@ -1,6 +1,6 @@
 # Reinforcement Learning for Multi-Turn LLM Negotiation
 
-Training a 4B-parameter LLM to negotiate price in multi-turn conversations against diverse buyer opponents, using PPO, GRPO, and SFT. Two RL algorithms built from scratch in raw PyTorch; six PPO runs, four GRPO run series, one SFT baseline, and a five-agent evaluation sweep on held-out Craigslist data. Total compute spend: ~$250.
+Training a 4B-parameter LLM to negotiate price in multi-turn conversations against diverse buyer opponents, using PPO, GRPO, and SFT. Two RL algorithms built from scratch in raw PyTorch; six PPO runs, four GRPO run series, one SFT baseline, and a five-agent evaluation sweep on Craigslist negotiations. Total compute spend: ~$250.
 
 **See [analysis.md](analysis.md) for the full technical writeup**: motivation, prior work, algorithm design, results, and what I learned.
 
@@ -98,14 +98,14 @@ shared/
   gae.py                        # compute_gae()
 data/
   craigslist.py                 # Craigslist parsing pipeline
-  craigslist_grpo_enriched.csv  # Training data (460 scenarios)
+  craigslist_grpo_enriched.csv  # Training data (526 transcripts)
   craigslist_eval.csv           # Held-out evaluation
   synthetic_data.csv            # 200 synthetic scenarios
 ```
 
 ## Data
 
-- **CraigslistBargains** (He et al. 2018): 460 real negotiation transcripts filtered through a two-pass quality pipeline.
+- **CraigslistBargains** (He et al. 2018): 526 real negotiation transcripts filtered through a two-pass quality pipeline, 460 of which reached a deal.
 - **Synthetic scenarios**: 200 scenarios generated via Gemini across 40 item types and 10 buyer personas, spanning 5 price tiers ($50–$500K).
 - **Held-out validation** (`craigslist_eval.csv`): 153 uuids with zero overlap with the 526 training uuids, enforced by `python data/check_splits.py`.
 - **`craigslist_gold.csv`**: the gold-standard quality-reference set (top-tier transcripts with full rubric scores) used during data curation to calibrate the two-pass quality filter. Not a training or evaluation input; held-out eval uses `craigslist_eval.csv`.
