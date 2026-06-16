@@ -98,8 +98,10 @@ shared/
   gae.py                        # compute_gae()
 data/
   craigslist.py                 # Craigslist parsing pipeline
+  craigslist_parsed.csv         # Raw CraigslistBargain corpus (source for curation)
   craigslist_grpo_enriched.csv  # Training data (526 transcripts)
   craigslist_eval.csv           # Held-out evaluation
+  craigslist_gold.csv           # Quality-reference set (curation calibration)
   synthetic_data.csv            # 200 synthetic scenarios
 ```
 
@@ -109,6 +111,7 @@ data/
 - **Synthetic scenarios**: 200 scenarios generated via Gemini across 40 item types and 10 buyer personas, spanning 5 price tiers ($50–$500K).
 - **Held-out validation** (`craigslist_eval.csv`): 153 uuids with zero overlap with the 526 training uuids, enforced by `python data/check_splits.py`.
 - **`craigslist_gold.csv`**: the gold-standard quality-reference set (top-tier transcripts with full rubric scores) used during data curation to calibrate the two-pass quality filter. Not a training or evaluation input; held-out eval uses `craigslist_eval.csv`.
+- **`craigslist_parsed.csv`**: the normalized CraigslistBargain corpus (5,830 dialogues) produced by `data/craigslist.py`. This is the source the curated sets were built from, kept in the repo because the upstream CodaLab bundles can rot. Not used in training or evaluation.
 
 ## Limitations
 
