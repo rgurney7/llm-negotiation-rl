@@ -15,7 +15,11 @@ from peft import set_peft_model_state_dict
 from shared.rollout_config import get_ppo_buyer
 
 CHECKPOINT_DIR = os.environ.get("CHECKPOINT_DIR", os.path.join(SCRIPT_DIR, "checkpoints"))
-DATA_PATH = os.path.join(SCRIPT_DIR, "../data/craigslist_grpo_enriched.csv")
+# Held-out validation split: 153 uuids, disjoint from the 526 training uuids
+# (enforced by data/check_splits.py). This documents the intended held-out
+# design, but the file is not runnable as committed: the enrichment that builds
+# the seller_prompt/buyer_prompt columns NegotiationEnv consumes was not persisted.
+DATA_PATH = os.path.join(SCRIPT_DIR, "../data/craigslist_eval.csv")
 OUT_DIR = os.environ.get("OUT_DIR", SCRIPT_DIR)
 
 

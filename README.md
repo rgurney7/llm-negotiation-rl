@@ -4,9 +4,21 @@ Training a 4B-parameter LLM to negotiate price in multi-turn conversations again
 
 **See [analysis.md](analysis.md) for the full technical writeup**: motivation, prior work, algorithm design, results, and what I learned.
 
+## What this shows
+
+The findings I stand behind most are the training-time ones, observed directly during the runs:
+
+- **Two RL algorithms built from scratch in raw PyTorch.** PPO (multi-turn, learned 23M-parameter critic, GAE) and GRPO (single-turn, group-relative), with no RL framework underneath.
+- **Stable multi-turn RL on free-form negotiation text, with no format collapse.** Across 8-turn episodes the agent stayed coherent with stable entropy, contradicting the degeneration He et al. (2018) reported for end-to-end RL on this task. Whether this holds beyond 4B LoRA + 23M critic is an open question.
+- **Critic capacity was the dominant lever.** Scaling the standalone critic from 787K to 23M parameters, with the same LLM and task, took PPO win rate from 25% to 48%.
+
 ## Results
 
-Evaluation on 50 Craigslist negotiations sampled from the enriched dataset, with the buyer played by Gemini/Groq API models. See the Reproducibility note under Limitations for caveats on the eval pipeline.
+Single seed per run, so treat mean-reward differences below roughly 0.05 as noise.
+
+Evaluation on 50 Craigslist negotiations, with the buyer played by Gemini/Groq API models.
+
+**Evaluation note.** The committed evaluation reads the training file, and the held-out Craigslist split could not be reconstructed because the enrichment step that produced its prompts was not persisted. Read the comparison below as in-distribution evaluation, not held-out generalization. SFT is the exception: it trained on synthetic scenarios, so Craigslist evaluation is out-of-distribution for it regardless of split, which makes its gain over base the one cross-distribution result here.
 
 | Agent | Deals | Deal Rate | Mean Reward | Price Ratio |
 |-------|-------|-----------|-------------|-------------|
@@ -16,7 +28,7 @@ Evaluation on 50 Craigslist negotiations sampled from the enriched dataset, with
 | PPO v5 (PPO+GRPO init) | 28/50 | 56% | -0.014 | 0.759 |
 | PPO v6 (PPO from base) | 29/50 | 58% | -0.010 | 0.765 |
 
-SFT generalized best; RL agents showed strong training performance but struggled on held-out data at this scale. Full discussion in [analysis.md](analysis.md).
+SFT is the only agent with a positive gain over base. Full discussion in [analysis.md](analysis.md).
 
 ## Architecture
 
@@ -59,7 +71,7 @@ Single-turn Group Relative Policy Optimization. For each prompt (transcript trun
 
 ### SFT (`sft/`)
 
-Supervised fine-tuning baseline on curated positive-reward trajectories from synthetic data. Despite training on synthetic data only, SFT was the only method that transferred to held-out Craigslist scenarios.
+Supervised fine-tuning baseline on curated positive-reward trajectories from synthetic data. Despite training on synthetic data only, SFT was the only method that transferred to Craigslist negotiations (out-of-distribution for it regardless of split).
 
 - [sft_train.py](sft/sft_train.py): SFT with masked loss on seller turns
 
@@ -123,7 +135,7 @@ data/
 - Price extraction by the LLM judge was spot-checked during development rather than formally validated against ground-truth labels or across multiple judges.
 
 ### Reproducibility
-Training ran on ephemeral GPU compute. LoRA and critic checkpoints and per-update training logs were not persisted; the numbers in the results table reflect run-time observation during the original experiments and are not independently re-verifiable from this repository. The code here is the training and evaluation pipeline, and reproducing the reported numbers would require re-running the full sweep. The evaluation scripts as committed diverged from the pipeline used during development (the default data path in `ppo_eval.py`, and the env constructor signature in `grpo_eval.py`), and should be read as the intended design rather than a direct replay. See the Implementation Notes in [analysis.md](analysis.md) for the held-out eval path and two other known issues in the PPO and GRPO code.
+Training ran on ephemeral GPU compute. LoRA and critic checkpoints, per-update training logs, and the sweep harness that produced the five-agent table were not persisted, so the table reflects run-time observation during the original experiments and reproducing it would require re-running the full sweep. The eval scripts (`ppo_eval.py`, `grpo_eval.py`) are committed pointing at `data/craigslist_eval.csv` to document the intended held-out design, but that file is not runnable as committed: the enrichment that builds its prompt columns was not persisted. See the Implementation Notes in [analysis.md](analysis.md) for two algorithmic known-issues left in place in the PPO and GRPO code.
 
 ## References
 

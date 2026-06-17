@@ -7,17 +7,25 @@ sys.path.insert(0, os.path.join(SCRIPT_DIR, "../ppo"))
 
 import argparse
 import csv
-import torch
 from collections import defaultdict
-from transformers import AutoModelForCausalLM, AutoTokenizer
+import torch
+import pandas as pd
 from grpo_agent import GrpoAgent
-from shared.config import SCENARIOS, PERSONAS, make_buyer_prompt, make_seller_prompt
+from ppo_env import NegotiationEnv
 from safetensors.torch import load_file
 from peft import set_peft_model_state_dict
-from ppo_env import NegotiationEnv
+from shared.rollout_config import get_ppo_buyer
 
 
-CHECKPOINT_DIR = os.path.join(SCRIPT_DIR, "checkpoints")
+CHECKPOINT_DIR = os.environ.get("CHECKPOINT_DIR", os.path.join(SCRIPT_DIR, "checkpoints"))
+# Held-out validation split: 153 uuids, disjoint from the 526 training uuids
+# (enforced by data/check_splits.py). This documents the intended held-out
+# design, but the file is not runnable as committed: the enrichment that builds
+# the seller_prompt/buyer_prompt columns NegotiationEnv consumes was not persisted.
+# The buyer is sampled from the production roster (get_ppo_buyer) so the eval
+# opponent matches the training opponents, replacing the earlier off-roster
+# Phi-4-mini buyer and the in-code SCENARIOS x PERSONAS grid.
+DATA_PATH = os.path.join(SCRIPT_DIR, "../data/craigslist_eval.csv")
 LOG_PATH = os.path.join(SCRIPT_DIR, "eval_log.csv")
 
 
@@ -37,77 +45,68 @@ def load_base_agent():
     return agent
 
 
-def run_eval(agent, buyer_model, buyer_tokenizer, label, scenarios, personas, log_rows):
+def run_eval(agent, label, eval_rows, df, log_rows):
     print(f"\n{'='*60}")
     print(f"  {label}")
     print(f"{'='*60}\n", flush=True)
 
-    for scenario in scenarios:
-        for persona in personas:
-            persona_name = persona["name"]
-            env = NegotiationEnv(buyer_model, buyer_tokenizer, agent.device)
-            env.scenario = scenario
-            env.persona = make_buyer_prompt(persona, scenario)
-            obs = env._get_agent_obs()
-            seller_prompt = make_seller_prompt(scenario)
+    for i, (idx, row) in enumerate(eval_rows.iterrows()):
+        buyer = get_ppo_buyer()
+        env = NegotiationEnv(buyer, df.iloc[[df.index.get_loc(idx)]])
+        obs, _ = env.reset()
+        seller_prompt = env.get_seller_prompt()
 
-            while env.current_step < env.max_steps:
-                full_prompt = seller_prompt + "\n\n" + obs
-                _, generated_ids = agent.generate(full_prompt)
-                agent_text = agent.tokenizer.decode(generated_ids[0], skip_special_tokens=True)
-                obs, reward, terminated, truncated, info = env.step(agent_text)
+        for step in range(env.max_steps):
+            full_prompt = seller_prompt + "\n\n" + obs
+            _, generated_ids = agent.generate(full_prompt)
+            agent_text = agent.tokenizer.decode(generated_ids[0], skip_special_tokens=True)
+            obs, reward, terminated, truncated, info = env.step(agent_text)
+            if terminated or truncated:
+                break
 
-            transcript = env._build_transcript()
-            agreed = info.get("agreed_price")
-            turn = info.get("agreement_turn")
+        agreed = info.get("agreed_price")
 
-            print(f"[{scenario['item']}] vs {persona_name}  "
-                  f"price={agreed}  turn={turn}  reward={reward:.3f}")
-            print(f"{transcript}\n", flush=True)
+        print(f"[{i+1}/{len(eval_rows)}] {row.get('item_title', 'Unknown')[:40]:40s}  "
+              f"listing=${row['listing_price']:.0f}  agreed={agreed}  reward={reward:.3f}  buyer={buyer.name}",
+              flush=True)
 
-            log_rows.append({
-                "agent": label,
-                "scenario": scenario["item"],
-                "persona": persona_name,
-                "agreed_price": agreed,
-                "agreement_turn": turn,
-                "reward": round(reward, 3),
-            })
+        log_rows.append({
+            "agent": label,
+            "row_idx": idx,
+            "item_title": row.get("item_title", "Unknown"),
+            "listing_price": row["listing_price"],
+            "agreed_price": agreed,
+            "reward": round(reward, 3),
+        })
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--update", type=int, required=True, help="Checkpoint update number to evaluate (e.g. 20)")
+    parser.add_argument("--rows", type=int, default=50, help="Number of data rows to evaluate on")
     parser.add_argument("--skip-base", action="store_true", help="Skip base model benchmark")
-    parser.add_argument("--trial", action="store_true", help="Quick trial: 1 scenario, 2 personas")
     args = parser.parse_args()
 
-    scenarios = SCENARIOS[:1] if args.trial else SCENARIOS
-    personas = PERSONAS[:2] if args.trial else PERSONAS
-
-    buyer_model_id = "microsoft/Phi-4-mini-instruct"
-    buyer_tokenizer = AutoTokenizer.from_pretrained(buyer_model_id)
-    if buyer_tokenizer.pad_token is None:
-        buyer_tokenizer.pad_token = buyer_tokenizer.eos_token
-    buyer_model = AutoModelForCausalLM.from_pretrained(buyer_model_id, torch_dtype=torch.float16)
+    print("Loading data...", flush=True)
+    df = pd.read_csv(DATA_PATH)
+    eval_rows = df.sample(n=min(args.rows, len(df)), random_state=42)
+    print(f"Evaluating on {len(eval_rows)} rows", flush=True)
 
     log_rows = []
 
     # Base model benchmark
     if not args.skip_base:
         base_agent = load_base_agent()
-        buyer_model.to(base_agent.device)
-        run_eval(base_agent, buyer_model, buyer_tokenizer, "base", scenarios, personas, log_rows)
+        run_eval(base_agent, "base", eval_rows, df, log_rows)
         del base_agent
         torch.cuda.empty_cache() if torch.cuda.is_available() else None
 
     # Trained agent
     trained_agent = load_trained_agent(args.update)
-    buyer_model.to(trained_agent.device)
-    run_eval(trained_agent, buyer_model, buyer_tokenizer, f"grpo_{args.update}", scenarios, personas, log_rows)
+    run_eval(trained_agent, f"grpo_{args.update}", eval_rows, df, log_rows)
 
     # Write CSV
-    fields = ["agent", "scenario", "persona", "agreed_price", "agreement_turn", "reward"]
+    fields = ["agent", "row_idx", "item_title", "listing_price", "agreed_price", "reward"]
     with open(LOG_PATH, "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=fields)
         w.writeheader()
